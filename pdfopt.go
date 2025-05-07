@@ -1,14 +1,15 @@
 package pdfopt
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 )
 
 type PDFOpt struct {
-	inputFile string
+	inputFile    string
+	settingsType string
+	resolution   int
 }
 
 func isGhostscriptAvailable() bool {
@@ -16,52 +17,68 @@ func isGhostscriptAvailable() bool {
 	return err == nil
 }
 
-func NewPDFOpt(filename string) (*PDFOpt, error) {
+func NewPDFOpt(filename string) *PDFOpt {
 	if !isGhostscriptAvailable() {
-		return nil, fmt.Errorf("ghostscript (gs) is not available in system PATH")
+		panic("ghostscript (gs) is not available in system PATH")
 	}
 
 	return &PDFOpt{
-		inputFile: filename,
-	}, nil
+		inputFile:    filename,
+		settingsType: "/screen",
+		resolution:   72,
+	}
 }
 
-func (p *PDFOpt) ForEbook(outputFilename string) error {
-	return p.executeGhostscript(outputFilename, "/ebook", 120)
+func (p *PDFOpt) ForEbook() *PDFOpt {
+	p.settingsType = "/ebook"
+	p.resolution = 150
+	return p
 }
 
-func (p *PDFOpt) ForEbookInplace() error {
-	return p.executeGhostscriptInplace("/ebook", 120)
+func (p *PDFOpt) ForPrepress() *PDFOpt {
+	p.settingsType = "/prepress"
+	p.resolution = 300
+	return p
 }
 
-func (p *PDFOpt) ForPrint(outputFilename string) error {
-	return p.executeGhostscript(outputFilename, "/printer", 300)
+func (p *PDFOpt) ForPrint() *PDFOpt {
+	p.settingsType = "/printer"
+	p.resolution = 300
+	return p
 }
 
-func (p *PDFOpt) ForPrintInplace() error {
-	return p.executeGhostscriptInplace("/printer", 300)
+func (p *PDFOpt) ForScreen() *PDFOpt {
+	p.settingsType = "/screen"
+	p.resolution = 72
+	return p
 }
 
-func (p *PDFOpt) ForScreen(outputFilename string) error {
-	return p.executeGhostscript(outputFilename, "/screen", 72)
+func (p *PDFOpt) ImageDPI(dpi int) *PDFOpt {
+	p.resolution = dpi
+	return p
 }
 
-func (p *PDFOpt) ForScreenInplace() error {
-	return p.executeGhostscriptInplace("/screen", 72)
+func (p *PDFOpt) Optimize(outputFilename string) error {
+	return p.executeGhostscript(outputFilename, p.settingsType, p.resolution)
+}
+
+func (p *PDFOpt) OptimizeInplace() error {
+	return p.executeGhostscriptInplace(p.settingsType, p.resolution)
 }
 
 func (p *PDFOpt) executeGhostscript(outputFile, settingsType string, resolution int) error {
 	res := strconv.Itoa(resolution)
 	cmd := exec.Command("gs",
 		"-sDEVICE=pdfwrite",
+		"-dPDFSETTINGS="+settingsType,
+
 		// strive for PDF/A-1b compatibility
 		"-sProcessColorModel=DeviceCMYK",
-		"-sPDFACompatibilityPolicy=1",
-		"-sColorConversionStrategy=RGB",
-		"-dPDFA=1",
-
-		"-dPDFSETTINGS="+settingsType,
-		"-dPDFACompatibilityPolicy=1",
+		/*
+			"-dPDFA=1", // kills fonts
+			//"-sColorConversionStrategy=RGB",
+			"-dPDFACompatibilityPolicy=1",
+		*/
 		"-dCompatibilityLevel=1.4",
 
 		// image related options
@@ -75,7 +92,7 @@ func (p *PDFOpt) executeGhostscript(outputFile, settingsType string, resolution 
 		"-dGrayImageDownsampleThreshold=1.0",
 		"-dMonoImageDownsampleThreshold=1.0",
 
-		// embed fonts far as needed
+		// embed fonts
 		"-dSubsetFonts=true",
 		"-dEmbedAllFonts=true",
 
